@@ -1,0 +1,28 @@
+version: "3.8"
+
+services:
+
+  mihomo:
+    image: metacubex/mihomo:latest
+    container_name: mihomo
+    restart: unless-stopped
+
+    ports:
+      - "7890:7890"     # HTTP/SOCKS代理
+      - "9090:9090"     # Clash API
+
+    volumes:
+      - ./config:/root/.config/mihomo
+
+    command:
+      - -d
+      - /root/.config/mihomo
+
+
+  metacubexd:
+    image: ghcr.io/metacubex/metacubexd:latest
+    container_name: metacubexd
+    restart: unless-stopped
+
+    ports:
+      - "18090:80"

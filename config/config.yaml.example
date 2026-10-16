@@ -1,0 +1,13 @@
+# 复制为 config.yaml 后使用；此示例没有代理节点，只会直连。
+mixed-port: 7890
+allow-lan: true
+bind-address: "*"
+mode: rule
+log-level: info
+ipv6: false
+external-controller: "0.0.0.0:9090"
+secret: "CHANGE_ME_TO_A_RANDOM_PASSWORD_BEFORE_STARTING"
+proxies: []
+proxy-groups: []
+rules:
+  - MATCH,DIRECT

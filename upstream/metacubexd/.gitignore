@@ -1,0 +1,37 @@
+# Nuxt dev/build outputs
+.output
+.data
+.nuxt
+.nitro
+.cache
+
+# Node
+node_modules
+
+# Logs
+logs
+*.log
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# IDE / Editor
+.idea
+.history
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Local build output
+dist
+
+coverage
+
+# impeccable working dir (critique snapshots, render sidecar)
+.impeccable/

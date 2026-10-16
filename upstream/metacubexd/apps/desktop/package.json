@@ -1,0 +1,39 @@
+{
+  "name": "@metacubexd/desktop",
+  "desktopName": "metacubexd",
+  "version": "1.273.1",
+  "description": "MetaCubeXD — the official Mihomo dashboard, desktop app",
+  "homepage": "https://github.com/MetaCubeX/metacubexd",
+  "author": "MetaCubeX",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "package": "electron-builder",
+    "copy:renderer": "rm -rf renderer && cp -r ../../packages/ui/.output/public renderer",
+    "fetch:mihomo": "tsx scripts/fetch-mihomo.mjs",
+    "ensure:electron": "node -e \"require('electron')\"",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "test:helper-package": "electron-vite build && node scripts/test-helper-package.mjs",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@metacubexd/agent": "workspace:*",
+    "h3": "catalog:"
+  },
+  "devDependencies": {
+    "@electron/fuses": "catalog:",
+    "electron": "catalog:",
+    "electron-vite": "catalog:",
+    "electron-builder": "catalog:",
+    "vitest": "catalog:",
+    "tsx": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "yaml": "catalog:"
+  }
+}

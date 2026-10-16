@@ -1,0 +1,2 @@
+'*': prettier --write --ignore-unknown
+'*.{js,ts,vue,json}': eslint --fix

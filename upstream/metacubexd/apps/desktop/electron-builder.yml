@@ -1,0 +1,143 @@
+appId: one.metacubex.desktop
+productName: MetaCubeXD
+# Explicit, filesystem-safe executable name. Without it electron-builder derives
+# it from the package name (@metacubexd/desktop -> @metacubexddesktop), whose `@`
+# is rejected by the Linux AppImage builder.
+executableName: metacubexd
+# Deep-link URL schemes (subscription import). REQUIRED for packaged macOS:
+# app.setAsDefaultProtocolClient only works for schemes already declared in the
+# bundle's Info.plist (CFBundleURLTypes) — without this the clash:// links
+# never reach the app. Windows/Linux get registry/desktop-file entries too.
+protocols:
+  - name: Clash Subscription
+    schemes:
+      - clash
+      - clashmeta
+# No auto-update / no publish provider: the app updates manually. Without this,
+# electron-builder tries to auto-detect a GitHub publish provider, fails
+# ("Cannot detect repository"), then crashes in computeChannelNames (reading
+# `channel` of a null publish config) even under `--publish never`.
+publish: null
+# Re-stage the arch-correct mihomo (+ wintun on Windows) before EACH arch is
+# packed. Required because the Windows/Linux legs build --x64 AND --arm64 from
+# one x64 host in a single invocation; without this the arm64 installer ships
+# the host-arch (x64) kernel. See scripts/before-pack.cjs.
+beforePack: scripts/before-pack.cjs
+# Flip Electron runtime fuses on each packed binary (RunAsNode kept ON for the
+# privileged helper; Node inspect/options OFF; OnlyLoadAppFromAsar ON). Runs
+# before signing so the code-sign covers the modified binary. See
+# scripts/after-pack.cjs.
+afterPack: scripts/after-pack.cjs
+directories:
+  output: dist
+  buildResources: build
+files:
+  - 'out/**/*'
+  - 'renderer/**/*'
+  - 'resources/tray.png'
+  - 'resources/tray@2x.png'
+  - 'resources/trayTemplate.png'
+  - 'resources/trayTemplate@2x.png'
+  - 'package.json'
+asar: true
+asarUnpack:
+  # The privileged TUN helper is run by an OS service as a real on-disk file
+  # (`<electron-bin> out/helper/index.js`, ELECTRON_RUN_AS_NODE=1). A file inside
+  # app.asar can't be spawned that way, so unpack it.
+  # resolveHelperEntry() points at <resourcesPath>/app.asar.unpacked/out/helper/index.js.
+  # The multi-entry build shares modules with main via out/chunks. Those imports
+  # must also exist beside the unpacked helper when Electron runs it as Node.
+  # NOTE: mihomo + wintun.dll ship via extraResources (outside the asar
+  # entirely), so they need no asarUnpack entry here.
+  - 'out/helper/**'
+  - 'out/chunks/**'
+# NOTE: mihomo is staged per-platform below (mac/linux: `mihomo`, win:
+# `mihomo.exe`) because electron-builder does NOT define the `${ext}` macro in
+# extraResources `from`/`to` (it only exists in artifact-name context), so a
+# shared `mihomo${ext}` entry fails to pack with "macro ext is not defined".
+# Platform-level extraResources MERGE with this common list. Runtime resolution
+# (src/main/binary-path.ts) expects <resourcesPath>/mihomo[.exe] accordingly.
+extraResources:
+  - from: resources/default-config.yaml
+    to: default-config.yaml
+mac:
+  icon: build/icon.icns
+  extraResources:
+    - from: resources/mihomo
+      to: mihomo
+  # Unsigned build: identity null + hardenedRuntime false. NOTE: a SIGNED app
+  # using TUN would normally need a network entitlement
+  # (com.apple.developer.networking.*); since this build is unsigned, no
+  # entitlement/provisioning config is added — TUN works via the separately
+  # installed root LaunchDaemon helper, not an app entitlement.
+  identity: null
+  hardenedRuntime: false
+  category: public.app-category.utilities
+  target:
+    - dmg
+    - zip
+  artifactName: ${productName}-${version}-mac-${arch}.${ext}
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - arm64
+  artifactName: ${productName}-${version}-win-${arch}.${ext}
+  # Windows TUN: mihomo's wintun backend loads wintun.dll. Ship it next to the
+  # kernel under Resources/ (Windows only). Staged into resources/wintun.dll by
+  # `pnpm fetch:mihomo --os win32` before packaging. asarUnpack so it lands as a
+  # real file (it's referenced via extraResources, kept out of app.asar anyway).
+  extraResources:
+    - from: resources/mihomo.exe
+      to: mihomo.exe
+    - from: resources/wintun.dll
+      to: wintun.dll
+  asarUnpack:
+    - 'resources/wintun.dll'
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+linux:
+  # Native packages install this set into the matching hicolor size buckets.
+  # A single 1024px PNG only produced hicolor/1024x1024, which some Linux
+  # desktops do not consider when resolving the Icon=metacubexd entry.
+  icon: build/icons
+  syncDesktopName: true
+  extraResources:
+    - from: resources/mihomo
+      to: mihomo
+  target:
+    - target: AppImage
+      arch:
+        - x64
+        - arm64
+    - target: deb
+      arch:
+        - x64
+        - arm64
+    # Fedora, RHEL, openSUSE, and other RPM-based distributions.
+    - target: rpm
+      arch:
+        - x64
+        - arm64
+    # Arch Linux and derivatives. electron-builder emits a .pacman archive
+    # that can be installed directly with `pacman -U`.
+    - target: pacman
+      arch:
+        - x64
+        - arm64
+  category: Network
+  # Required by the deb/rpm/pacman (fpm) targets.
+  maintainer: MetaCubeX <maintainers@metacubex.one>
+  artifactName: ${productName}-${version}-linux-${arch}.${ext}
+# Native package managers require/conventionally use a lowercase package
+# identifier; do not derive this from the mixed-case productName.
+deb:
+  packageName: metacubexd
+rpm:
+  packageName: metacubexd
+pacman:
+  packageName: metacubexd

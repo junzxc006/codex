@@ -1,0 +1,23 @@
+{
+  "note": "Source snapshots; not proven to match the mutable latest image tags. No Git history, images or dependency caches included.",
+  "sources": [
+    {
+      "name": "mihomo",
+      "repository": "https://github.com/MetaCubeX/mihomo",
+      "branch": "Meta",
+      "commit": "88dcbf7f1614a67c3b36b848ee3592dfa92ada36",
+      "license": "GPL-3.0",
+      "snapshot_path": "upstream/mihomo",
+      "git_archive_sha256": "a1cf2b8f4ffb3c90c9bb7a37a27a94862933a456a998f85d619e5917f4384b38"
+    },
+    {
+      "name": "metacubexd",
+      "repository": "https://github.com/MetaCubeX/metacubexd",
+      "branch": "main",
+      "commit": "8bbc8f58fef71148a94fb5c0ff808f79b057337d",
+      "license": "MIT",
+      "snapshot_path": "upstream/metacubexd",
+      "git_archive_sha256": "a3d113b3d0e10f4b05929821ca20f563a354e4c6e68a457ba8047fffd9dddb9b"
+    }
+  ]
+}

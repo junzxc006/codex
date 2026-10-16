@@ -1,0 +1,410 @@
+import type { Config, Proxy, ProxyProvider, Rule, RuleProvider } from '~/types'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
+import { toggleRuleDisabledAPI, useRequest } from './useApi'
+import { useControlApi } from './useControlApi'
+import { useControlInfo } from './useControlInfo'
+
+// ============== Request Helpers ==============
+
+function createRequest() {
+  return useRequest()
+}
+
+// ============== Query Keys ==============
+
+export const queryKeys = {
+  proxies: ['proxies'] as const,
+  proxyProviders: ['proxy-providers'] as const,
+  rules: ['rules'] as const,
+  ruleProviders: ['rule-providers'] as const,
+  config: ['config'] as const,
+  version: ['version'] as const,
+}
+
+// Scope a query to the current endpoint. Switching endpoints uses SPA
+// navigation (no page reload), so without this the proxies/config/etc. queries
+// would keep serving the previous backend's cached data during the staleTime
+// window. Returning a computed key makes vue-query refetch under a new key when
+// the endpoint changes; invalidateQueries keeps using the bare key, which still
+// matches by prefix.
+export function useEndpointScopedKey(base: readonly string[]) {
+  const endpointStore = useEndpointStore()
+  return computed(() => [...base, endpointStore.selectedEndpoint])
+}
+
+// ============== Proxies ==============
+
+export function useProxiesQuery() {
+  return useQuery({
+    queryKey: useEndpointScopedKey(queryKeys.proxies),
+    queryFn: async () => {
+      const request = createRequest()
+      const { proxies } = await request
+        .get('proxies')
+        .json<{ proxies: Record<string, Proxy> }>()
+      return proxies
+    },
+  })
+}
+
+export function useProxyProvidersQuery() {
+  return useQuery({
+    queryKey: useEndpointScopedKey(queryKeys.proxyProviders),
+    queryFn: async () => {
+      const request = createRequest()
+      const { providers } = await request
+        .get('providers/proxies')
+        .json<{ providers: Record<string, ProxyProvider> }>()
+      return providers
+    },
+  })
+}
+
+export function useSelectProxyMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      groupName,
+      proxyName,
+    }: {
+      groupName: string
+      proxyName: string
+    }) => {
+      const request = createRequest()
+      await request.put(`proxies/${encodeURIComponent(groupName)}`, {
+        body: JSON.stringify({ name: proxyName }),
+      })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.proxies })
+    },
+  })
+}
+
+export function useProxyLatencyTestMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      proxyName,
+      url,
+      timeout,
+    }: {
+      proxyName: string
+      url: string
+      timeout: number
+    }) => {
+      const request = createRequest()
+      const result = await request
+        .get(`proxies/${encodeURIComponent(proxyName)}/delay`, {
+          searchParams: { url, timeout },
+        })
+        .json<{ delay: number }>()
+      return { proxyName, delay: result.delay }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.proxies })
+    },
+  })
+}
+
+export function useProxyGroupLatencyTestMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      groupName,
+      url,
+      timeout,
+    }: {
+      groupName: string
+      url: string
+      timeout: number
+    }) => {
+      const request = createRequest()
+      const result = await request
+        .get(`group/${encodeURIComponent(groupName)}/delay`, {
+          searchParams: { url, timeout },
+        })
+        .json<Record<string, number>>()
+      return result
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.proxies })
+    },
+  })
+}
+
+export function useUpdateProxyProviderMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (providerName: string) => {
+      const request = createRequest()
+      await request.put(`providers/proxies/${encodeURIComponent(providerName)}`)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.proxies })
+      queryClient.invalidateQueries({ queryKey: queryKeys.proxyProviders })
+    },
+  })
+}
+
+export function useProxyProviderHealthCheckMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (providerName: string) => {
+      const request = createRequest()
+      const result = await request
+        .get(
+          `providers/proxies/${encodeURIComponent(providerName)}/healthcheck`,
+          { timeout: 20 * 1000 },
+        )
+        .json<Record<string, number>>()
+      return result
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.proxies })
+      queryClient.invalidateQueries({ queryKey: queryKeys.proxyProviders })
+    },
+  })
+}
+
+// ============== Rules ==============
+
+export function useRulesQuery() {
+  return useQuery({
+    queryKey: useEndpointScopedKey(queryKeys.rules),
+    queryFn: async () => {
+      const request = createRequest()
+      const { rules } = await request
+        .get('rules')
+        .json<{ rules: Record<string, Omit<Rule, 'index'>> }>()
+      return Object.entries(rules).map(([index, rule]) => ({
+        ...rule,
+        index: Number(index),
+      }))
+    },
+  })
+}
+
+export function useToggleRuleDisabledMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      index,
+      disabled,
+    }: {
+      index: number
+      disabled: boolean
+    }) => {
+      await toggleRuleDisabledAPI(index, disabled)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.rules })
+    },
+  })
+}
+
+export function useRuleProvidersQuery() {
+  return useQuery({
+    queryKey: useEndpointScopedKey(queryKeys.ruleProviders),
+    queryFn: async () => {
+      const request = createRequest()
+      const { providers } = await request
+        .get('providers/rules')
+        .json<{ providers: Record<string, RuleProvider> }>()
+      return Object.values(providers)
+    },
+  })
+}
+
+export function useUpdateRuleProviderMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (providerName: string) => {
+      const request = createRequest()
+      await request.put(`providers/rules/${encodeURIComponent(providerName)}`)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.rules })
+      queryClient.invalidateQueries({ queryKey: queryKeys.ruleProviders })
+    },
+  })
+}
+
+// ============== Config ==============
+
+export function useConfigQuery() {
+  return useQuery({
+    queryKey: useEndpointScopedKey(queryKeys.config),
+    queryFn: async () => {
+      const request = createRequest()
+      return request.get('configs').json<Config>()
+    },
+  })
+}
+
+// Apply a single top-level config change. The PATCH hot-applies it to the
+// running kernel; when `persist` is supplied (server/desktop with the
+// config-sections capability) the SAME change is written back to the active
+// profile so it survives a kernel restart (#2070). Persisting is best-effort:
+// the live PATCH already took effect, so a persistence hiccup must not fail the
+// save the user just saw succeed — it only means the change won't outlast a
+// restart, which is the pre-fix behaviour.
+// ponytail: warn-on-failure; promote to a toast if users actually hit it.
+export async function applyConfigPatch(
+  key: keyof Config,
+  value: unknown,
+  deps: {
+    patch: (json: Record<string, unknown>) => Promise<unknown>
+    persist?: (body: { key: string; value: unknown }) => Promise<unknown>
+  },
+): Promise<void> {
+  await deps.patch({ [key]: value })
+  if (!deps.persist) return
+  try {
+    await deps.persist({ key: String(key), value })
+  } catch (e) {
+    console.warn(
+      '[config] failed to persist config change to the active profile:',
+      e,
+    )
+  }
+}
+
+export function useUpdateConfigMutation() {
+  const queryClient = useQueryClient()
+  const controlApi = useControlApi()
+  const { hasFeature } = useControlInfo()
+
+  return useMutation({
+    mutationFn: ({
+      key,
+      value,
+    }: {
+      key: keyof Config
+      value: Partial<Config[keyof Config]>
+    }) =>
+      applyConfigPatch(key, value, {
+        patch: async (json) => {
+          await createRequest().patch('configs', { json })
+        },
+        // Evaluated per-save (NOT at setup): the /info probe is async, so a
+        // setup-time read could miss the agent and skip persistence forever.
+        persist: hasFeature('config-sections')
+          ? (body) => controlApi.setConfigSection({ ...body, restart: false })
+          : undefined,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.config })
+    },
+  })
+}
+
+// ============== Version ==============
+
+export function useVersionQuery() {
+  return useQuery({
+    queryKey: useEndpointScopedKey(queryKeys.version),
+    queryFn: async () => {
+      const request = createRequest()
+      const { version } = await request
+        .get('version')
+        .json<{ version: string }>()
+      return version
+    },
+  })
+}
+
+// ============== Connections ==============
+
+export function useCloseConnectionMutation() {
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const request = createRequest()
+      await request.delete(`connections/${id}`)
+    },
+  })
+}
+
+export function useCloseAllConnectionsMutation() {
+  return useMutation({
+    mutationFn: async () => {
+      const request = createRequest()
+      await request.delete('connections')
+    },
+  })
+}
+
+// ============== Config Actions ==============
+
+export function useReloadConfigMutation() {
+  return useMutation({
+    mutationFn: async () => {
+      const request = createRequest()
+      await request.put('configs', {
+        searchParams: { force: true },
+        json: { path: '', payload: '' },
+      })
+    },
+  })
+}
+
+export function useFlushFakeIPMutation() {
+  return useMutation({
+    mutationFn: async () => {
+      const request = createRequest()
+      await request.post('cache/fakeip/flush')
+    },
+  })
+}
+
+export function useFlushDNSCacheMutation() {
+  return useMutation({
+    mutationFn: async () => {
+      const request = createRequest()
+      await request.post('cache/dns/flush')
+    },
+  })
+}
+
+export function useUpdateGEOMutation() {
+  return useMutation({
+    mutationFn: async () => {
+      const request = createRequest()
+      await request.post('configs/geo')
+    },
+  })
+}
+
+export function useUpgradeBackendMutation() {
+  return useMutation({
+    mutationFn: async () => {
+      const request = createRequest()
+      await request.post('upgrade')
+    },
+  })
+}
+
+export function useUpgradeUIMutation() {
+  return useMutation({
+    mutationFn: async () => {
+      const request = createRequest()
+      await request.post('upgrade/ui')
+    },
+  })
+}
+
+export function useRestartBackendMutation() {
+  return useMutation({
+    mutationFn: async () => {
+      const request = createRequest()
+      await request.post('restart')
+    },
+  })
+}

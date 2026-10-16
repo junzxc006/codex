@@ -1,0 +1,80 @@
+name: unit-tests
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop-helper-windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6.0.10
+
+      - uses: actions/setup-node@v7
+        with:
+          cache: pnpm
+          node-version: lts/*
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Verify Windows helper installer and service wrapper
+        run: pnpm --filter @metacubexd/desktop test src/main/__tests__/helper-elevate.spec.ts src/main/__tests__/helper-installer.spec.ts
+
+      - name: Verify unpacked desktop helper over named pipes
+        run: pnpm --filter @metacubexd/desktop test:helper-package
+
+  unit-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6.0.10
+
+      - uses: actions/setup-node@v7
+        with:
+          cache: pnpm
+          node-version: lts/*
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Run unit tests
+        run: |
+          pnpm --filter @metacubexd/agent test
+          pnpm --filter @metacubexd/desktop test
+          pnpm --filter @metacubexd/server test
+          pnpm --filter @metacubexd/ui test:coverage
+
+      - name: Verify unpacked desktop helper
+        run: pnpm --filter @metacubexd/desktop test:helper-package
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v7
+        with:
+          files: ./packages/ui/coverage/lcov.info
+          fail_ci_if_error: false
+          verbose: true
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

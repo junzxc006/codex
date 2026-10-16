@@ -1,0 +1,150 @@
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { describe, expect, it } from 'vitest'
+import {
+  AGENT_VERSION,
+  createAgent,
+  createControlRouter,
+  createProfileStore,
+  createSupervisor,
+  MIHOMO_VERSION,
+  mihomoAsset,
+} from './index'
+
+function opts() {
+  const home = mkdtempSync(join(tmpdir(), 'mcxd-agent-'))
+  return {
+    binaryPath: '/fake/mihomo',
+    homeDir: home,
+    activeConfigPath: join(home, 'active.yaml'),
+    profilesDir: join(home, 'profiles'),
+    agentToken: 'tok',
+  }
+}
+
+describe('createAgent', () => {
+  it('returns supervisor + profiles + router + info', () => {
+    const agent = createAgent(opts())
+    expect(typeof agent.supervisor.start).toBe('function')
+    expect(typeof agent.profiles.list).toBe('function')
+    expect(agent.router).toBeDefined()
+    expect(typeof agent.info).toBe('function')
+  })
+
+  it('info() matches the §3 capability shape', () => {
+    const agent = createAgent(opts())
+    const info = agent.info()
+    expect(info).toMatchObject({
+      hasAgent: true,
+      version: AGENT_VERSION,
+      features: [
+        'profiles',
+        'logs-sse',
+        'kernel-control',
+        'geo-assets',
+        'webdav-backup',
+        'runtime-config',
+        'config-sections',
+        'visual-config-editor',
+      ],
+    })
+    expect(info.platform).toMatchObject({
+      os: process.platform,
+      arch: process.arch,
+    })
+    expect(info.kernel).toMatchObject({ bundled: true, path: '/fake/mihomo' })
+  })
+
+  it('info().features always includes geo-assets (homeDir-backed, no controller)', () => {
+    const agent = createAgent(opts())
+    expect(agent.info().features).toContain('geo-assets')
+  })
+
+  it('info().features always includes webdav-backup (request-scoped credentials)', () => {
+    const agent = createAgent(opts())
+    expect(agent.info().features).toContain('webdav-backup')
+  })
+
+  it('info().features always includes runtime-config (reads activeConfigPath)', () => {
+    const agent = createAgent(opts())
+    expect(agent.info().features).toContain('runtime-config')
+  })
+
+  it('info().features always includes config-sections (active-profile YAML editing)', () => {
+    const agent = createAgent(opts())
+    expect(agent.info().features).toContain('config-sections')
+  })
+
+  it('info().features always includes visual-config-editor', () => {
+    const agent = createAgent(opts())
+    expect(agent.info().features).toContain('visual-config-editor')
+    expect(agent.profileEditor).toBeDefined()
+  })
+
+  it('info().features excludes system-proxy when no controller is injected', () => {
+    const agent = createAgent(opts())
+    expect(agent.info().features).not.toContain('system-proxy')
+    expect((agent as Record<string, unknown>).systemProxy).toBeUndefined()
+  })
+
+  it('info().features includes system-proxy when a controller is injected', () => {
+    const systemProxy = {
+      isEnabled: async () => false,
+      enable: async () => {},
+      disable: async () => {},
+      setAutoProxy: async () => {},
+      disableAutoProxy: async () => {},
+      describe: () => ({ port: 7890, bypass: [] as string[] }),
+    }
+    const agent = createAgent({ ...opts(), systemProxy })
+    expect(agent.info().features).toContain('system-proxy')
+    expect(agent.systemProxy).toBe(systemProxy)
+  })
+
+  it('info().features excludes kernel-version when no kernelManager is injected', () => {
+    const agent = createAgent(opts())
+    expect(agent.info().features).not.toContain('kernel-version')
+    expect((agent as Record<string, unknown>).kernelManager).toBeUndefined()
+  })
+
+  it('info().features includes kernel-version when a kernelManager is injected', () => {
+    const kernelManager = {
+      listVersions: async () => ({
+        versions: ['v1.19.27'],
+        current: 'v1.19.27',
+        bundled: 'v1.19.27',
+      }),
+      switch: async () => {},
+    }
+    const agent = createAgent({ ...opts(), kernelManager })
+    expect(agent.info().features).toContain('kernel-version')
+    expect(agent.kernelManager).toBe(kernelManager)
+  })
+
+  it('info().features excludes tun when no controller is injected', () => {
+    const agent = createAgent(opts())
+    expect(agent.info().features).not.toContain('tun')
+    expect((agent as Record<string, unknown>).tunController).toBeUndefined()
+  })
+
+  it('info().features includes tun when a controller is injected', () => {
+    const tunController = {
+      enable: async () => {},
+      disable: async () => {},
+      status: async () => ({ enabled: false, mode: 'sidecar' as const }),
+    }
+    const agent = createAgent({ ...opts(), tunController })
+    expect(agent.info().features).toContain('tun')
+    expect(agent.tunController).toBe(tunController)
+  })
+
+  it('re-exports the public surface', () => {
+    expect(typeof createSupervisor).toBe('function')
+    expect(typeof createProfileStore).toBe('function')
+    expect(typeof createControlRouter).toBe('function')
+    expect(typeof mihomoAsset).toBe('function')
+    expect(MIHOMO_VERSION.startsWith('v')).toBe(true)
+    expect(Number.isInteger(Number(MIHOMO_VERSION[1]))).toBe(true)
+  })
+})
